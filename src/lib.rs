@@ -6,31 +6,31 @@ mod const_vec;
 use crate::const_serde::{ConstReadBuffer, ConstWriteBuffer};
 
 #[derive(Debug, Copy, Clone)]
-struct PlainOldData {
+pub struct PlainOldData {
     offset: usize,
     encoding: &'static Encoding,
 }
 
 #[derive(Debug, Copy, Clone)]
-struct StructEncoding {
+pub struct StructEncoding {
     size: usize,
     data: &'static [PlainOldData],
 }
 
 #[derive(Debug, Copy, Clone)]
-struct ListEncoding {
+pub struct ListEncoding {
     len: usize,
     item_encoding: &'static Encoding,
 }
 
 #[derive(Debug, Copy, Clone)]
-struct PrimitiveEncoding {
+pub struct PrimitiveEncoding {
     size: usize,
     reverse_bytes: bool,
 }
 
 #[derive(Debug, Copy, Clone)]
-enum Encoding {
+pub enum Encoding {
     Struct(StructEncoding),
     List(ListEncoding),
     Primitive(PrimitiveEncoding),
@@ -46,7 +46,7 @@ impl Encoding {
     }
 }
 
-unsafe trait SerializeConst: Sized {
+pub unsafe trait SerializeConst: Sized {
     const ENCODING: Encoding;
     const _ASSERT: () = assert!(Self::ENCODING.size() == std::mem::size_of::<Self>());
 }
@@ -141,7 +141,7 @@ const fn serialize_const_ptr(
     }
 }
 
-const fn serialize_const<T: SerializeConst>(data: &T, to: ConstWriteBuffer) -> ConstWriteBuffer {
+pub const fn serialize_const<T: SerializeConst>(data: &T, to: ConstWriteBuffer) -> ConstWriteBuffer {
     let ptr = data as *const T as *const ();
     serialize_const_ptr(ptr, to, &T::ENCODING)
 }
@@ -215,7 +215,7 @@ const fn deserialize_const_ptr<'a, const N: usize>(
     }
 }
 
-const fn deserialize_const<const N: usize, T: SerializeConst>(from: ConstReadBuffer) -> T {
+pub const fn deserialize_const<const N: usize, T: SerializeConst>(from: ConstReadBuffer) -> T {
     let out = MaybeUninit::<[u8; N]>::uninit();
     let out = unsafe { std::mem::transmute_copy::<MaybeUninit<[u8; N]>, [MaybeUninit<u8>; N]>(&out) };
     let (_, out) = deserialize_const_ptr(from, &T::ENCODING, (0, out));
