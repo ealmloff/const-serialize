@@ -215,7 +215,7 @@ const fn deserialize_const_ptr<'a, const N: usize>(
     }
 }
 
-pub const fn deserialize_const<const N: usize, T: SerializeConst>(from: ConstReadBuffer) -> T {
+pub const unsafe fn deserialize_const<const N: usize, T: SerializeConst>(from: ConstReadBuffer) -> T {
     let out = MaybeUninit::<[u8; N]>::uninit();
     let out = unsafe { std::mem::transmute_copy::<MaybeUninit<[u8; N]>, [MaybeUninit<u8>; N]>(&out) };
     let (_, out) = deserialize_const_ptr(from, &T::ENCODING, (0, out));
@@ -263,35 +263,35 @@ fn test_serialize_const_layout_primitive() {
     assert_eq!(buf.as_ref(), 1234u32.to_le_bytes());
     let buf = buf.read();
     const SIZE_U32: usize = std::mem::size_of::<u32>();
-    assert_eq!(deserialize_const::<SIZE_U32, u32>(buf), 1234u32);
+    unsafe { assert_eq!(deserialize_const::<SIZE_U32, u32>(buf), 1234u32) };
 
     let mut buf = ConstWriteBuffer::new();
     buf = serialize_const(&1234u64, buf);
     assert_eq!(buf.as_ref(), 1234u64.to_le_bytes());
     let buf = buf.read();
     const SIZE_U64: usize = std::mem::size_of::<u64>();
-    assert_eq!(deserialize_const::<SIZE_U64, u64>(buf), 1234u64);
+    unsafe { assert_eq!(deserialize_const::<SIZE_U64, u64>(buf), 1234u64) };
 
     let mut buf = ConstWriteBuffer::new();
     buf = serialize_const(&1234i32, buf);
     assert_eq!(buf.as_ref(), 1234i32.to_le_bytes());
     let buf = buf.read();
     const SIZE_I32: usize = std::mem::size_of::<i32>();
-    assert_eq!(deserialize_const::<SIZE_I32, i32>(buf), 1234i32);
+    unsafe { assert_eq!(deserialize_const::<SIZE_I32, i32>(buf), 1234i32) };
 
     let mut buf = ConstWriteBuffer::new();
     buf = serialize_const(&1234i64, buf);
     assert_eq!(buf.as_ref(), 1234i64.to_le_bytes());
     let buf = buf.read();
     const SIZE_I64: usize = std::mem::size_of::<i64>();
-    assert_eq!(deserialize_const::<SIZE_I64, i64>(buf), 1234i64);
+    unsafe { assert_eq!(deserialize_const::<SIZE_I64, i64>(buf), 1234i64) };
 
     let mut buf = ConstWriteBuffer::new();
     buf = serialize_const(&true, buf);
     assert_eq!(buf.as_ref(), [1u8]);
     let buf = buf.read();
     const SIZE_BOOL: usize = std::mem::size_of::<bool>();
-    assert_eq!(deserialize_const::<SIZE_BOOL, bool>(buf), true);
+    unsafe { assert_eq!(deserialize_const::<SIZE_BOOL, bool>(buf), true) };
 }
 
 #[test]
@@ -301,7 +301,7 @@ fn test_serialize_const_layout_list() {
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
     const SIZE_ARRAY: usize = std::mem::size_of::<[u8; 3]>();
-    assert_eq!(deserialize_const::<SIZE_ARRAY, [u8; 3]>(buf), [1, 2, 3]);
+    unsafe { assert_eq!(deserialize_const::<SIZE_ARRAY, [u8; 3]>(buf), [1, 2, 3]) };
 }
 
 #[test]
@@ -315,7 +315,7 @@ fn test_serialize_const_layout_nested_lists() {
     let buf = buf.read();
     const SIZE_ARRAY: usize = std::mem::size_of::<[[u8; 3]; 3]>();
     assert_eq!(
-        deserialize_const::<SIZE_ARRAY, [[u8; 3]; 3]>(buf),
+        unsafe { deserialize_const::<SIZE_ARRAY, [[u8; 3]; 3]>(buf) },
         [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
     );
 }
@@ -405,7 +405,7 @@ fn test_serialize_const_layout_struct() {
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
     const SIZE: usize = std::mem::size_of::<OtherStruct>();
-    let data2 = deserialize_const::<SIZE, OtherStruct>(buf);
+    let data2 = unsafe { deserialize_const::<SIZE, OtherStruct>(buf) };
     assert_eq!(data, data2);
 }
 
@@ -519,7 +519,7 @@ fn test_serialize_const_layout_struct_list() {
         let mut buf = ConstWriteBuffer::new();
         buf = serialize_const(&DATA, buf);
         let buf = buf.read();
-        let [first, second, third] = deserialize_const::<SIZE, [OtherStruct; 3]>(buf);
+        let [first, second, third] = unsafe { deserialize_const::<SIZE, [OtherStruct; 3]>(buf) };
         if !(first.equal(&DATA[0]) && second.equal(&DATA[1]) && third.equal(&DATA[2])) {
             panic!("data mismatch");
         }
@@ -529,6 +529,6 @@ fn test_serialize_const_layout_struct_list() {
     buf = serialize_const(&DATA, buf);
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
-    let data2 = deserialize_const::<SIZE, [OtherStruct; 3]>(buf);
+    let data2 = unsafe { deserialize_const::<SIZE, [OtherStruct; 3]>(buf) };
     assert_eq!(DATA, data2);
 }
