@@ -5,30 +5,35 @@ mod const_vec;
 
 use crate::const_serde::{ConstReadBuffer, ConstWriteBuffer};
 
+/// Plain old data for a field. Stores the offset of the field in the struct and the encoding of the field.
 #[derive(Debug, Copy, Clone)]
 pub struct PlainOldData {
     offset: usize,
     encoding: &'static Encoding,
 }
 
+/// Encoding for a struct. The struct encoding is just a list of fields with offsets
 #[derive(Debug, Copy, Clone)]
 pub struct StructEncoding {
     size: usize,
     data: &'static [PlainOldData],
 }
 
+/// The encoding for a constant sized array. The array encoding is just a length and an item encoding.
 #[derive(Debug, Copy, Clone)]
 pub struct ListEncoding {
     len: usize,
     item_encoding: &'static Encoding,
 }
 
+/// The encoding for a primitive type. The bytes will be reversed if the target is big endian.
 #[derive(Debug, Copy, Clone)]
 pub struct PrimitiveEncoding {
     size: usize,
     reverse_bytes: bool,
 }
 
+/// The encoding for a type. This encoding defines a sequence of locations and reversed or not bytes. These bytes will be copied from during serialization and copied into during deserialization.
 #[derive(Debug, Copy, Clone)]
 pub enum Encoding {
     Struct(StructEncoding),
@@ -37,6 +42,7 @@ pub enum Encoding {
 }
 
 impl Encoding {
+    /// The size of the type in bytes.
     const fn size(&self) -> usize {
         match self {
             Encoding::Struct(encoding) => encoding.size,
@@ -46,7 +52,9 @@ impl Encoding {
     }
 }
 
+/// A trait for types that can be serialized and deserialized in const.
 pub unsafe trait SerializeConst: Sized {
+    /// The memory layout of the type. This type must have plain old data; no pointers or references.
     const ENCODING: Encoding;
     const _ASSERT: () = assert!(Self::ENCODING.size() == std::mem::size_of::<Self>());
 }
@@ -81,6 +89,7 @@ unsafe impl<const N: usize, T: SerializeConst> SerializeConst for [T; N] {
     });
 }
 
+/// Serialize a struct that is stored at the pointer passed in
 const fn serialize_const_struct(
     ptr: *const (),
     mut to: ConstWriteBuffer,
@@ -96,6 +105,7 @@ const fn serialize_const_struct(
     to
 }
 
+/// Serialize a primitive type that is stored at the pointer passed in
 const fn serialize_const_primitive(
     ptr: *const (),
     mut to: ConstWriteBuffer,
@@ -114,6 +124,7 @@ const fn serialize_const_primitive(
     to
 }
 
+/// Serialize a constant sized array that is stored at the pointer passed in
 const fn serialize_const_list(
     ptr: *const (),
     mut to: ConstWriteBuffer,
@@ -129,6 +140,7 @@ const fn serialize_const_list(
     to
 }
 
+/// Serialize a pointer to a type that is stored at the pointer passed in
 const fn serialize_const_ptr(
     ptr: *const (),
     to: ConstWriteBuffer,
@@ -141,11 +153,16 @@ const fn serialize_const_ptr(
     }
 }
 
-pub const fn serialize_const<T: SerializeConst>(data: &T, to: ConstWriteBuffer) -> ConstWriteBuffer {
+/// Serialize a type into a buffer
+pub const fn serialize_const<T: SerializeConst>(
+    data: &T,
+    to: ConstWriteBuffer,
+) -> ConstWriteBuffer {
     let ptr = data as *const T as *const ();
     serialize_const_ptr(ptr, to, &T::ENCODING)
 }
 
+/// Deserialize a primitive type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
 const fn deserialize_const_primitive<'a, const N: usize>(
     mut from: ConstReadBuffer<'a>,
     encoding: &PrimitiveEncoding,
@@ -168,11 +185,12 @@ const fn deserialize_const_primitive<'a, const N: usize>(
     (from, out)
 }
 
+/// Deserialize a struct type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
 const fn deserialize_const_struct<'a, const N: usize>(
     mut from: ConstReadBuffer<'a>,
     encoding: &StructEncoding,
     out: (usize, [MaybeUninit<u8>; N]),
-) -> (ConstReadBuffer<'a>, [MaybeUninit<u8>; N])  {
+) -> (ConstReadBuffer<'a>, [MaybeUninit<u8>; N]) {
     let (start, mut out) = out;
     let mut i = 0;
     while i < encoding.data.len() {
@@ -182,20 +200,22 @@ const fn deserialize_const_struct<'a, const N: usize>(
         out = new_out;
         i += 1;
     }
-    (from,  out)
+    (from, out)
 }
 
+/// Deserialize a list type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
 const fn deserialize_const_list<'a, const N: usize>(
     mut from: ConstReadBuffer<'a>,
     encoding: &ListEncoding,
     out: (usize, [MaybeUninit<u8>; N]),
-) -> (ConstReadBuffer<'a>,  [MaybeUninit<u8>; N]) {
+) -> (ConstReadBuffer<'a>, [MaybeUninit<u8>; N]) {
     let (start, mut out) = out;
     let len = encoding.len;
     let item_encoding = encoding.item_encoding;
     let mut i = 0;
     while i < len {
-        let (new_from, new_out) = deserialize_const_ptr(from, item_encoding, (start + i * item_encoding.size(), out));
+        let (new_from, new_out) =
+            deserialize_const_ptr(from, item_encoding, (start + i * item_encoding.size(), out));
         from = new_from;
         out = new_out;
         i += 1;
@@ -203,6 +223,7 @@ const fn deserialize_const_list<'a, const N: usize>(
     (from, out)
 }
 
+/// Deserialize a type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
 const fn deserialize_const_ptr<'a, const N: usize>(
     from: ConstReadBuffer<'a>,
     encoding: &Encoding,
@@ -215,7 +236,12 @@ const fn deserialize_const_ptr<'a, const N: usize>(
     }
 }
 
-pub const unsafe fn deserialize_const<const N: usize, T: SerializeConst>(from: ConstReadBuffer) -> T {
+/// Deserialize a buffer into a type
+/// # Safety
+/// N must be `std::mem::size_of::<T>()`
+pub const unsafe fn deserialize_const<const N: usize, T: SerializeConst>(
+    from: ConstReadBuffer,
+) -> T {
     let out = [MaybeUninit::uninit(); N];
     let (_, out) = deserialize_const_ptr(from, &T::ENCODING, (0, out));
     unsafe { std::mem::transmute_copy::<[MaybeUninit<u8>; N], T>(&out) }
@@ -524,15 +550,12 @@ fn test_serialize_const_layout_struct_list() {
     };
     const _ASSERT_2: () = {
         let mut buf = ConstWriteBuffer::new();
-        const DATA_AGAIN: [[OtherStruct; 3]; 3] = [
-            DATA,
-            DATA,
-            DATA,
-        ];
+        const DATA_AGAIN: [[OtherStruct; 3]; 3] = [DATA, DATA, DATA];
         const ARR_SIZE: usize = std::mem::size_of::<[[OtherStruct; 3]; 3]>();
         buf = serialize_const(&DATA_AGAIN, buf);
         let buf = buf.read();
-        let [first, second, third] = unsafe { deserialize_const::<ARR_SIZE, [[OtherStruct; 3]; 3]>(buf) };
+        let [first, second, third] =
+            unsafe { deserialize_const::<ARR_SIZE, [[OtherStruct; 3]; 3]>(buf) };
         if !(first[0].equal(&DATA[0]) && first[1].equal(&DATA[1]) && first[2].equal(&DATA[2])) {
             panic!("data mismatch");
         }
