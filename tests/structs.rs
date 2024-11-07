@@ -93,12 +93,11 @@ fn test_serialize_const_layout_struct_list() {
         },
     ];
 
-    const SIZE: usize = std::mem::size_of::<[OtherStruct; 3]>();
     const _ASSERT: () = {
         let mut buf = ConstWriteBuffer::new();
         buf = serialize_const(&DATA, buf);
         let buf = buf.read();
-        let [first, second, third] = unsafe { deserialize_const::<SIZE, [OtherStruct; 3]>(buf) };
+        let [first, second, third] = unsafe { deserialize_const!([OtherStruct; 3], buf) };
         if !(first.equal(&DATA[0]) && second.equal(&DATA[1]) && third.equal(&DATA[2])) {
             panic!("data mismatch");
         }
@@ -106,11 +105,9 @@ fn test_serialize_const_layout_struct_list() {
     const _ASSERT_2: () = {
         let mut buf = ConstWriteBuffer::new();
         const DATA_AGAIN: [[OtherStruct; 3]; 3] = [DATA, DATA, DATA];
-        const ARR_SIZE: usize = std::mem::size_of::<[[OtherStruct; 3]; 3]>();
         buf = serialize_const(&DATA_AGAIN, buf);
         let buf = buf.read();
-        let [first, second, third] =
-            unsafe { deserialize_const::<ARR_SIZE, [[OtherStruct; 3]; 3]>(buf) };
+        let [first, second, third] = unsafe { deserialize_const!([[OtherStruct; 3]; 3], buf) };
         if !(first[0].equal(&DATA[0]) && first[1].equal(&DATA[1]) && first[2].equal(&DATA[2])) {
             panic!("data mismatch");
         }
@@ -126,7 +123,7 @@ fn test_serialize_const_layout_struct_list() {
     buf = serialize_const(&DATA, buf);
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
-    let data2 = unsafe { deserialize_const::<SIZE, [OtherStruct; 3]>(buf) };
+    let data2 = unsafe { deserialize_const!([OtherStruct; 3], buf) };
     assert_eq!(DATA, data2);
 }
 
@@ -166,7 +163,6 @@ fn test_serialize_const_layout_struct() {
     buf = serialize_const(&data, buf);
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
-    const SIZE: usize = std::mem::size_of::<OtherStruct>();
-    let data2 = unsafe { deserialize_const::<SIZE, OtherStruct>(buf) };
+    let data2 = unsafe { deserialize_const!(OtherStruct, buf) };
     assert_eq!(data, data2);
 }

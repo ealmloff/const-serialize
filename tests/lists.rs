@@ -6,8 +6,7 @@ fn test_serialize_const_layout_list() {
     buf = serialize_const(&[1u8, 2, 3] as &[u8; 3], buf);
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
-    const SIZE_ARRAY: usize = std::mem::size_of::<[u8; 3]>();
-    unsafe { assert_eq!(deserialize_const::<SIZE_ARRAY, [u8; 3]>(buf), [1, 2, 3]) };
+    unsafe { assert_eq!(deserialize_const!([u8; 3], buf), [1, 2, 3]) };
 }
 
 #[test]
@@ -19,9 +18,10 @@ fn test_serialize_const_layout_nested_lists() {
     );
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
-    const SIZE_ARRAY: usize = std::mem::size_of::<[[u8; 3]; 3]>();
-    assert_eq!(
-        unsafe { deserialize_const::<SIZE_ARRAY, [[u8; 3]; 3]>(buf) },
-        [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-    );
+    unsafe {
+        assert_eq!(
+            deserialize_const!([[u8; 3]; 3], buf),
+            [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+        );
+    }
 }

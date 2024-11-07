@@ -271,10 +271,18 @@ const fn deserialize_const_ptr<'a, const N: usize>(
     }
 }
 
+#[macro_export]
+macro_rules! deserialize_const {
+    ($type:ty, $buffer:expr) => {{
+        const __SIZE: usize = std::mem::size_of::<$type>();
+        $crate::deserialize_const_raw::<__SIZE, $type>($buffer)
+    }};
+}
+
 /// Deserialize a buffer into a type
 /// # Safety
 /// N must be `std::mem::size_of::<T>()`
-pub const unsafe fn deserialize_const<const N: usize, T: SerializeConst>(
+pub const unsafe fn deserialize_const_raw<const N: usize, T: SerializeConst>(
     from: ConstReadBuffer,
 ) -> T {
     // Create uninitized memory with the size of the type
