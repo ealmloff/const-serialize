@@ -31,6 +31,12 @@ fn test_serialize_const_layout_primitive() {
     assert_eq!(buf.as_ref(), [1u8]);
     let buf = buf.read();
     assert_eq!(deserialize_const!(bool, buf), Some(true));
+
+    let mut buf = ConstWriteBuffer::new();
+    buf = serialize_const(&0.631f32, buf);
+    assert_eq!(buf.as_ref(), 0.631f32.to_le_bytes());
+    let buf = buf.read();
+    assert_eq!(deserialize_const!(f32, buf), Some(0.631));
 }
 
 #[test]

@@ -172,3 +172,28 @@ fn test_serialize_const_layout_struct() {
     let data2 = deserialize_const!(OtherStruct, buf).unwrap();
     assert_eq!(data, data2);
 }
+
+#[test]
+fn test_link_sections() {
+    #[derive(SerializeConst)]
+    struct Struct {
+        a: u32,
+        b: u8,
+        c: u32,
+        d: f64,
+    }
+
+    const BUF_1: ConstWriteBuffer = ConstWriteBuffer::new();
+    const BUF_2: ConstWriteBuffer = serialize_const(
+        &Struct {
+            a: 0x11111111,
+            b: 0x22,
+            c: 0x33333333,
+            d: 0.123456789,
+        },
+        BUF_1,
+    );
+
+    #[used]
+    static DATA: ConstWriteBuffer = BUF_2;
+}
