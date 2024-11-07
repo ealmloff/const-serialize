@@ -1,6 +1,6 @@
 A rust serialization library that works in const with complex(ish) types like nested structs and arrays.
 ```rust
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
 struct Struct {
     a: u32,
     b: u8,
@@ -14,31 +14,7 @@ impl Struct {
     }
 }
 
-unsafe impl SerializeConst for Struct {
-    const ENCODING: Encoding = Encoding::Struct(StructEncoding {
-        size: std::mem::size_of::<Struct>(),
-        data: &[
-            PlainOldData {
-                offset: std::mem::offset_of!(Struct, a),
-                encoding: &u32::ENCODING,
-            },
-            PlainOldData {
-                offset: std::mem::offset_of!(Struct, b),
-                encoding: &u8::ENCODING,
-            },
-            PlainOldData {
-                offset: std::mem::offset_of!(Struct, c),
-                encoding: &u32::ENCODING,
-            },
-            PlainOldData {
-                offset: std::mem::offset_of!(Struct, d),
-                encoding: &u32::ENCODING,
-            },
-        ],
-    });
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
 struct OtherStruct {
     a: u32,
     b: u8,
@@ -50,30 +26,6 @@ impl OtherStruct {
     const fn equal(&self, other: &OtherStruct) -> bool {
         self.a == other.a && self.b == other.b && self.c.equal(&other.c) && self.d == other.d
     }
-}
-
-unsafe impl SerializeConst for OtherStruct {
-    const ENCODING: Encoding = Encoding::Struct(StructEncoding {
-        size: std::mem::size_of::<OtherStruct>(),
-        data: &[
-            PlainOldData {
-                offset: std::mem::offset_of!(OtherStruct, a),
-                encoding: &u32::ENCODING,
-            },
-            PlainOldData {
-                offset: std::mem::offset_of!(OtherStruct, b),
-                encoding: &u8::ENCODING,
-            },
-            PlainOldData {
-                offset: std::mem::offset_of!(OtherStruct, c),
-                encoding: &Struct::ENCODING,
-            },
-            PlainOldData {
-                offset: std::mem::offset_of!(OtherStruct, d),
-                encoding: &u32::ENCODING,
-            },
-        ],
-    });
 }
 
 const INNER_DATA: Struct = Struct {
