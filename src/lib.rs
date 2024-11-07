@@ -533,13 +533,13 @@ fn test_serialize_const_layout_struct_list() {
         buf = serialize_const(&DATA_AGAIN, buf);
         let buf = buf.read();
         let [first, second, third] = unsafe { deserialize_const::<ARR_SIZE, [[OtherStruct; 3]; 3]>(buf) };
-        if !(first[0].equal(&DATA[0]) && second[0].equal(&DATA[1]) && third[0].equal(&DATA[2])) {
+        if !(first[0].equal(&DATA[0]) && first[1].equal(&DATA[1]) && first[2].equal(&DATA[2])) {
             panic!("data mismatch");
         }
-        if !(first[1].equal(&DATA[0]) && second[1].equal(&DATA[1]) && third[1].equal(&DATA[2])) {
+        if !(second[0].equal(&DATA[0]) && second[1].equal(&DATA[1]) && second[2].equal(&DATA[2])) {
             panic!("data mismatch");
         }
-        if !(first[2].equal(&DATA[0]) && second[2].equal(&DATA[1]) && third[2].equal(&DATA[2])) {
+        if !(third[0].equal(&DATA[0]) && third[1].equal(&DATA[1]) && third[2].equal(&DATA[2])) {
             panic!("data mismatch");
         }
     };
