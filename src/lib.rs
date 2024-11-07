@@ -44,14 +44,24 @@ pub struct EnumEncoding {
 impl EnumEncoding {
     pub const fn new(
         size: usize,
-        discriminant_size: usize,
-        reverse_bytes: bool,
-        variants_offset: usize,
+        discriminant: PrimitiveEncoding,
         variants: &'static [EnumVariant],
     ) -> Self {
+        let mut max_align = 1;
+        let mut i = 0;
+        while i < variants.len() {
+            let EnumVariant { align, .. } = &variants[i];
+            if *align > max_align {
+                max_align = *align;
+            }
+            i += 1;
+        }
+
+        let variants_offset = (discriminant.size / max_align) + max_align;
+
         Self {
             size,
-            discriminant: PrimitiveEncoding::new(discriminant_size, reverse_bytes),
+            discriminant,
             variants_offset,
             variants,
         }
@@ -63,11 +73,12 @@ pub struct EnumVariant {
     // Note: tags may not be sequential
     tag: u32,
     data: StructEncoding,
+    align: usize,
 }
 
 impl EnumVariant {
-    pub const fn new(tag: u32, data: StructEncoding) -> Self {
-        Self { tag, data }
+    pub const fn new(tag: u32, data: StructEncoding, align: usize) -> Self {
+        Self { tag, data, align }
     }
 }
 
@@ -207,7 +218,7 @@ const fn serialize_const_enum(
     let mut i = 0;
     while i < encoding.variants.len() {
         // If the variant is the discriminated one, serialize it
-        let EnumVariant { tag, data } = &encoding.variants[i];
+        let EnumVariant { tag, data, .. } = &encoding.variants[i];
         if discriminant == *tag {
             let data_ptr = unsafe { ptr.byte_add(encoding.variants_offset) };
             to = serialize_const_struct(data_ptr, to, data);
@@ -357,7 +368,7 @@ const fn deserialize_const_enum<'a, const N: usize>(
     let mut i = 0;
     while i < encoding.variants.len() {
         // If the variant is the discriminated one, deserialize it
-        let EnumVariant { tag, data } = &encoding.variants[i];
+        let EnumVariant { tag, data, .. } = &encoding.variants[i];
         if discriminant == *tag {
             let offset = encoding.variants_offset;
             let (new_from, new_out) =

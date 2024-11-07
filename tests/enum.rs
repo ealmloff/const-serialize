@@ -1,4 +1,4 @@
-use const_serialize::{deserialize_const, serialize_const, ConstWriteBuffer};
+use const_serialize::{deserialize_const, serialize_const, ConstWriteBuffer, SerializeConst};
 use std::mem::MaybeUninit;
 
 #[test]
@@ -65,82 +65,14 @@ fn test_transmute_bytes_to_enum() {
 
 #[test]
 fn test_serialize_enum() {
-    #[derive(Clone, Copy, Debug, PartialEq)]
+    #[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
     #[repr(C, u8)]
     enum Enum {
         A { one: u32, two: u16 },
         B { one: u8, two: u16 } = 15,
     }
 
-    #[repr(C)]
-    struct A {
-        one: u32,
-        two: u16,
-    }
-
-    #[repr(C)]
-    struct B {
-        one: u8,
-        two: u16,
-    }
-
-    unsafe impl const_serialize::SerializeConst for Enum {
-        const ENCODING: const_serialize::Encoding =
-            const_serialize::Encoding::Enum(const_serialize::EnumEncoding::new(
-                std::mem::size_of::<Self>(),
-                std::mem::size_of::<u8>(),
-                cfg!(target_endian = "big"),
-                {
-                    let union_alignment = {
-                        let first = std::mem::align_of::<A>();
-                        let second = std::mem::align_of::<B>();
-                        if first > second {
-                            first
-                        } else {
-                            second
-                        }
-                    };
-                    (std::mem::size_of::<u8>() / union_alignment) + union_alignment
-                },
-                {
-                    const DATA: &'static [const_serialize::EnumVariant] = &[
-                        const_serialize::EnumVariant::new(
-                            0,
-                            const_serialize::StructEncoding::new(
-                                std::mem::size_of::<A>(),
-                                &[
-                                    const_serialize::PlainOldData::new(
-                                        std::mem::offset_of!(A, one),
-                                        u32::ENCODING,
-                                    ),
-                                    const_serialize::PlainOldData::new(
-                                        std::mem::offset_of!(A, two),
-                                        u16::ENCODING,
-                                    ),
-                                ],
-                            ),
-                        ),
-                        const_serialize::EnumVariant::new(
-                            15,
-                            const_serialize::StructEncoding::new(
-                                std::mem::size_of::<B>(),
-                                &[
-                                    const_serialize::PlainOldData::new(
-                                        std::mem::offset_of!(B, one),
-                                        u8::ENCODING,
-                                    ),
-                                    const_serialize::PlainOldData::new(
-                                        std::mem::offset_of!(B, two),
-                                        u16::ENCODING,
-                                    ),
-                                ],
-                            ),
-                        ),
-                    ];
-                    DATA
-                },
-            ));
-    }
+    println!("{:#?}", Enum::ENCODING);
 
     let data = Enum::A {
         one: 0x11111111,
@@ -155,6 +87,56 @@ fn test_serialize_enum() {
     let data = Enum::B {
         one: 0x11,
         two: 0x2233,
+    };
+    let mut buf = ConstWriteBuffer::new();
+    buf = serialize_const(&data, buf);
+    println!("{:?}", buf.as_ref());
+    let buf = buf.read();
+    assert_eq!(deserialize_const!(Enum, buf), Some(data));
+}
+
+#[test]
+fn test_serialize_nested_enum() {
+    #[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
+    #[repr(C, u8)]
+    enum Enum {
+        A { one: u32, two: u16 },
+        B { one: u8, two: InnerEnum } = 15,
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
+    #[repr(C, u16)]
+    enum InnerEnum {
+        A { one: u8 },
+        B { one: u64, two: f64 } = 1000,
+    }
+
+    let data = Enum::A {
+        one: 0x11111111,
+        two: 0x22,
+    };
+    let mut buf = ConstWriteBuffer::new();
+    buf = serialize_const(&data, buf);
+    println!("{:?}", buf.as_ref());
+    let buf = buf.read();
+    assert_eq!(deserialize_const!(Enum, buf), Some(data));
+
+    let data = Enum::B {
+        one: 0x11,
+        two: InnerEnum::A { one: 0x22 },
+    };
+    let mut buf = ConstWriteBuffer::new();
+    buf = serialize_const(&data, buf);
+    println!("{:?}", buf.as_ref());
+    let buf = buf.read();
+    assert_eq!(deserialize_const!(Enum, buf), Some(data));
+
+    let data = Enum::B {
+        one: 0x11,
+        two: InnerEnum::B {
+            one: 0x2233,
+            two: 0.123456789,
+        },
     };
     let mut buf = ConstWriteBuffer::new();
     buf = serialize_const(&data, buf);
