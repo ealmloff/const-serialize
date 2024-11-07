@@ -97,6 +97,7 @@ const fn serialize_const_struct(
 ) -> ConstWriteBuffer {
     let mut i = 0;
     while i < encoding.data.len() {
+        // Serialize the field at the offset pointer in the struct
         let PlainOldData { offset, encoding } = encoding.data[i];
         let field = unsafe { ptr.byte_add(offset) };
         to = serialize_const_ptr(field, to, encoding);
@@ -114,6 +115,7 @@ const fn serialize_const_primitive(
     let ptr = ptr as *const u8;
     let mut offset = 0;
     while offset < encoding.size {
+        // If the bytes are reversed, walk backwards from the end of the number when pushing bytes
         if encoding.reverse_bytes {
             to = to.push(unsafe { ptr.byte_add(encoding.size - offset - 1).read() });
         } else {
@@ -171,6 +173,7 @@ const fn deserialize_const_primitive<'a, const N: usize>(
     let (start, mut out) = out;
     let mut offset = 0;
     while offset < encoding.size {
+        // If the bytes are reversed, walk backwards from the end of the number when filling in bytes
         if encoding.reverse_bytes {
             let (from_new, value) = from.get();
             from = from_new;
@@ -194,6 +197,7 @@ const fn deserialize_const_struct<'a, const N: usize>(
     let (start, mut out) = out;
     let mut i = 0;
     while i < encoding.data.len() {
+        // Deserialize the field at the offset pointer in the struct
         let PlainOldData { offset, encoding } = encoding.data[i];
         let (new_from, new_out) = deserialize_const_ptr(from, encoding, (start + offset, out));
         from = new_from;
@@ -242,8 +246,11 @@ const fn deserialize_const_ptr<'a, const N: usize>(
 pub const unsafe fn deserialize_const<const N: usize, T: SerializeConst>(
     from: ConstReadBuffer,
 ) -> T {
+    // Create uninitized memory with the size of the type
     let out = [MaybeUninit::uninit(); N];
+    // Fill in the bytes into the buffer for the type
     let (_, out) = deserialize_const_ptr(from, &T::ENCODING, (0, out));
+    // Now that the memory is filled in, transmute it into the type
     unsafe { std::mem::transmute_copy::<[MaybeUninit<u8>; N], T>(&out) }
 }
 
