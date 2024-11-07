@@ -97,7 +97,10 @@ fn test_serialize_const_layout_struct_list() {
         let mut buf = ConstWriteBuffer::new();
         buf = serialize_const(&DATA, buf);
         let buf = buf.read();
-        let [first, second, third] = deserialize_const!([OtherStruct; 3], buf).unwrap();
+        let [first, second, third] = match deserialize_const!([OtherStruct; 3], buf) {
+            Some(data) => data,
+            None => panic!("data mismatch"),
+        };
         if !(first.equal(&DATA[0]) && second.equal(&DATA[1]) && third.equal(&DATA[2])) {
             panic!("data mismatch");
         }
@@ -107,7 +110,10 @@ fn test_serialize_const_layout_struct_list() {
         const DATA_AGAIN: [[OtherStruct; 3]; 3] = [DATA, DATA, DATA];
         buf = serialize_const(&DATA_AGAIN, buf);
         let buf = buf.read();
-        let [first, second, third] = deserialize_const!([[OtherStruct; 3]; 3], buf).unwrap();
+        let [first, second, third] = match deserialize_const!([[OtherStruct; 3]; 3], buf) {
+            Some(data) => data,
+            None => panic!("data mismatch"),
+        };
         if !(first[0].equal(&DATA[0]) && first[1].equal(&DATA[1]) && first[2].equal(&DATA[2])) {
             panic!("data mismatch");
         }
