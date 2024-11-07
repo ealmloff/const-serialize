@@ -216,8 +216,7 @@ const fn deserialize_const_ptr<'a, const N: usize>(
 }
 
 pub const unsafe fn deserialize_const<const N: usize, T: SerializeConst>(from: ConstReadBuffer) -> T {
-    let out = MaybeUninit::<[u8; N]>::uninit();
-    let out = unsafe { std::mem::transmute_copy::<MaybeUninit<[u8; N]>, [MaybeUninit<u8>; N]>(&out) };
+    let out = [MaybeUninit::uninit(); N];
     let (_, out) = deserialize_const_ptr(from, &T::ENCODING, (0, out));
     unsafe { std::mem::transmute_copy::<[MaybeUninit<u8>; N], T>(&out) }
 }
@@ -231,8 +230,7 @@ fn test_crimes() {
         d: u32,
     }
     const SIZE: usize = std::mem::size_of::<MyStruct>();
-    let out = MaybeUninit::<[u8; SIZE]>::uninit();
-    let mut out = unsafe { std::mem::transmute_copy::<MaybeUninit<[u8; SIZE]>, [MaybeUninit<u8>; SIZE]>(&out) };
+    let mut out = [MaybeUninit::uninit(); SIZE];
     let first_align = std::mem::offset_of!(MyStruct, a);
     let second_align = std::mem::offset_of!(MyStruct, b);
     let third_align = std::mem::offset_of!(MyStruct, c);
@@ -521,6 +519,27 @@ fn test_serialize_const_layout_struct_list() {
         let buf = buf.read();
         let [first, second, third] = unsafe { deserialize_const::<SIZE, [OtherStruct; 3]>(buf) };
         if !(first.equal(&DATA[0]) && second.equal(&DATA[1]) && third.equal(&DATA[2])) {
+            panic!("data mismatch");
+        }
+    };
+    const _ASSERT_2: () = {
+        let mut buf = ConstWriteBuffer::new();
+        const DATA_AGAIN: [[OtherStruct; 3]; 3] = [
+            DATA,
+            DATA,
+            DATA,
+        ];
+        const ARR_SIZE: usize = std::mem::size_of::<[[OtherStruct; 3]; 3]>();
+        buf = serialize_const(&DATA_AGAIN, buf);
+        let buf = buf.read();
+        let [first, second, third] = unsafe { deserialize_const::<ARR_SIZE, [[OtherStruct; 3]; 3]>(buf) };
+        if !(first[0].equal(&DATA[0]) && second[0].equal(&DATA[1]) && third[0].equal(&DATA[2])) {
+            panic!("data mismatch");
+        }
+        if !(first[1].equal(&DATA[0]) && second[1].equal(&DATA[1]) && third[1].equal(&DATA[2])) {
+            panic!("data mismatch");
+        }
+        if !(first[2].equal(&DATA[0]) && second[2].equal(&DATA[1]) && third[2].equal(&DATA[2])) {
             panic!("data mismatch");
         }
     };
