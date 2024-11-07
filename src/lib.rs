@@ -1,9 +1,9 @@
 use std::mem::MaybeUninit;
 
-mod const_serde;
+mod const_buffers;
 mod const_vec;
 
-pub use const_serde::{ConstReadBuffer, ConstWriteBuffer};
+pub use const_buffers::{ConstReadBuffer, ConstWriteBuffer};
 pub use derive_const_serialize::SerializeConst;
 
 /// Plain old data for a field. Stores the offset of the field in the struct and the encoding of the field.
