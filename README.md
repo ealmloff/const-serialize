@@ -6,63 +6,64 @@ struct Struct {
     a: u32,
     b: u8,
     c: u32,
-    d: u32,
+    d: Enum,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
+#[repr(C, u8)]
+enum Enum {
+    A { one: u32, two: u16 },
+    B { one: u8, two: u16 } = 15,
+}
+
+
+const {
+    let data = [Struct {
+        a: 0x11111111,
+        b: 0x22,
+        c: 0x33333333,
+        d: Enum::A {
+            one: 0x44444444,
+            two: 0x5555,
+        },
+    }; 3];
+    let mut buf = ConstWriteBuffer::new();
+    buf = serialize_const(&data, buf);
+    let buf = buf.read();
+    let [first, second, third] = match deserialize_const!([Struct; 3], buf) {
+        Some(data) => data,
+        None => panic!("data mismatch"),
+    };
+    if !(first.equal(&data[0]) && second.equal(&data[1]) && third.equal(&data[2])) {
+        panic!("data mismatch");
+    }
 }
 
 impl Struct {
     const fn equal(&self, other: &Struct) -> bool {
-        self.a == other.a && self.b == other.b && self.c == other.c && self.d == other.d
+        self.a == other.a && self.b == other.b && self.c == other.c && self.d.equal(&other.d)
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
-struct OtherStruct {
-    a: u32,
-    b: u8,
-    c: Struct,
-    d: u32,
-}
-
-impl OtherStruct {
-    const fn equal(&self, other: &OtherStruct) -> bool {
-        self.a == other.a && self.b == other.b && self.c.equal(&other.c) && self.d == other.d
+impl Enum {
+    const fn equal(&self, other: &Enum) -> bool {
+        match (self, other) {
+            (
+                Enum::A { one, two },
+                Enum::A {
+                    one: other_one,
+                    two: other_two,
+                },
+            ) => *one == *other_one && *two == *other_two,
+            (
+                Enum::B { one, two },
+                Enum::B {
+                    one: other_one,
+                    two: other_two,
+                },
+            ) => *one == *other_one && *two == *other_two,
+            _ => false,
+        }
     }
 }
-
-const INNER_DATA: Struct = Struct {
-    a: 0x11111111,
-    b: 0x22,
-    c: 0x33333333,
-    d: 0x44444444,
-};
-const DATA: [OtherStruct; 3] = [
-    OtherStruct {
-        a: 0x11111111,
-        b: 0x22,
-        c: INNER_DATA,
-        d: 0x44444444,
-    },
-    OtherStruct {
-        a: 0x111111,
-        b: 0x23,
-        c: INNER_DATA,
-        d: 0x44444444,
-    },
-    OtherStruct {
-        a: 0x11111111,
-        b: 0x11,
-        c: INNER_DATA,
-        d: 0x44441144,
-    },
-];
-
-const _ASSERT: () = {
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(&DATA, buf);
-    let buf = buf.read();
-    let [first, second, third] = deserialize_const!([OtherStruct; 3], buf).unwrap();
-    if !(first.equal(&DATA[0]) && second.equal(&DATA[1]) && third.equal(&DATA[2])) {
-        panic!("data mismatch");
-    }
-};
 ```
