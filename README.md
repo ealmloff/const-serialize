@@ -1,4 +1,5 @@
-A rust serialization library that works in const with complex(ish) types like nested structs and arrays.
+A rust serialization library that works in const with complex(ish) types like nested structs and arrays. Enums are not supported
+
 ```rust
 #[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
 struct Struct {
