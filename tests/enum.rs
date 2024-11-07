@@ -151,4 +151,14 @@ fn test_serialize_enum() {
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
     assert_eq!(deserialize_const!(Enum, buf), Some(data));
+
+    let data = Enum::B {
+        one: 0x11,
+        two: 0x2233,
+    };
+    let mut buf = ConstWriteBuffer::new();
+    buf = serialize_const(&data, buf);
+    println!("{:?}", buf.as_ref());
+    let buf = buf.read();
+    assert_eq!(deserialize_const!(Enum, buf), Some(data));
 }
