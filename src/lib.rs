@@ -172,6 +172,37 @@ unsafe impl<const N: usize, T: SerializeConst> SerializeConst for [T; N] {
     });
 }
 
+macro_rules! impl_serialize_const_tuple {
+    ($($generic:ident: $generic_number:expr),*) => {
+        impl_serialize_const_tuple!(@impl ($($generic,)*) = $($generic: $generic_number),*);
+    };
+    (@impl $inner:ty = $($generic:ident: $generic_number:expr),*) => {
+        unsafe impl<$($generic: SerializeConst),*> SerializeConst for ($($generic,)*) {
+            const ENCODING: Encoding = {
+                Encoding::Struct(StructEncoding {
+                    size: std::mem::size_of::<($($generic,)*)>(),
+                    data: &[
+                        $(
+                            PlainOldData::new(std::mem::offset_of!($inner, $generic_number), $generic::ENCODING),
+                        )*
+                    ],
+                })
+            };
+        }
+    };
+}
+
+impl_serialize_const_tuple!(T1: 0);
+impl_serialize_const_tuple!(T1: 0, T2: 1);
+impl_serialize_const_tuple!(T1: 0, T2: 1, T3: 2);
+impl_serialize_const_tuple!(T1: 0, T2: 1, T3: 2, T4: 3);
+impl_serialize_const_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4);
+impl_serialize_const_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5);
+impl_serialize_const_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6);
+impl_serialize_const_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6, T8: 7);
+impl_serialize_const_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6, T8: 7, T9: 8);
+impl_serialize_const_tuple!(T1: 0, T2: 1, T3: 2, T4: 3, T5: 4, T6: 5, T7: 6, T8: 7, T9: 8, T10: 9);
+
 /// Serialize a struct that is stored at the pointer passed in
 const fn serialize_const_struct(
     ptr: *const (),
