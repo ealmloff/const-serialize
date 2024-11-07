@@ -60,7 +60,6 @@ const _ASSERT: () = {
     let mut buf = ConstWriteBuffer::new();
     buf = serialize_const(&DATA, buf);
     let buf = buf.read();
-    const SIZE: usize = std::mem::size_of::<[OtherStruct; 3]>();
     let [first, second, third] = deserialize_const!([OtherStruct; 3], buf).unwrap();
     if !(first.equal(&DATA[0]) && second.equal(&DATA[1]) && third.equal(&DATA[2])) {
         panic!("data mismatch");
