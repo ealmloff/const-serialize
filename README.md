@@ -16,7 +16,6 @@ enum Enum {
     B { one: u8, two: u16 } = 15,
 }
 
-
 const {
     let data = [Struct {
         a: 0x11111111,
