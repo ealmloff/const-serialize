@@ -311,6 +311,7 @@ const fn serialize_const_ptr(
 }
 
 /// Serialize a type into a buffer
+#[must_use = "The data is serialized into the returned buffer"]
 pub const fn serialize_const<T: SerializeConst>(
     data: &T,
     to: ConstWriteBuffer,
@@ -470,6 +471,7 @@ macro_rules! deserialize_const {
 /// Deserialize a buffer into a type. This will return None if the buffer doesn't have enough data to fill the type.
 /// # Safety
 /// N must be `std::mem::size_of::<T>()`
+#[must_use = "The data is deserialized from the input buffer"]
 pub const unsafe fn deserialize_const_raw<const N: usize, T: SerializeConst>(
     from: ConstReadBuffer,
 ) -> Option<T> {
