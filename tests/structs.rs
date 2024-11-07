@@ -97,7 +97,7 @@ fn test_serialize_const_layout_struct_list() {
         let mut buf = ConstWriteBuffer::new();
         buf = serialize_const(&DATA, buf);
         let buf = buf.read();
-        let [first, second, third] = unsafe { deserialize_const!([OtherStruct; 3], buf) };
+        let [first, second, third] = deserialize_const!([OtherStruct; 3], buf).unwrap();
         if !(first.equal(&DATA[0]) && second.equal(&DATA[1]) && third.equal(&DATA[2])) {
             panic!("data mismatch");
         }
@@ -107,7 +107,7 @@ fn test_serialize_const_layout_struct_list() {
         const DATA_AGAIN: [[OtherStruct; 3]; 3] = [DATA, DATA, DATA];
         buf = serialize_const(&DATA_AGAIN, buf);
         let buf = buf.read();
-        let [first, second, third] = unsafe { deserialize_const!([[OtherStruct; 3]; 3], buf) };
+        let [first, second, third] = deserialize_const!([[OtherStruct; 3]; 3], buf).unwrap();
         if !(first[0].equal(&DATA[0]) && first[1].equal(&DATA[1]) && first[2].equal(&DATA[2])) {
             panic!("data mismatch");
         }
@@ -123,7 +123,7 @@ fn test_serialize_const_layout_struct_list() {
     buf = serialize_const(&DATA, buf);
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
-    let data2 = unsafe { deserialize_const!([OtherStruct; 3], buf) };
+    let data2 = deserialize_const!([OtherStruct; 3], buf).unwrap();
     assert_eq!(DATA, data2);
 }
 
@@ -163,6 +163,6 @@ fn test_serialize_const_layout_struct() {
     buf = serialize_const(&data, buf);
     println!("{:?}", buf.as_ref());
     let buf = buf.read();
-    let data2 = unsafe { deserialize_const!(OtherStruct, buf) };
+    let data2 = deserialize_const!(OtherStruct, buf).unwrap();
     assert_eq!(data, data2);
 }

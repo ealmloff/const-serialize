@@ -200,23 +200,29 @@ const fn deserialize_const_primitive<'a, const N: usize>(
     mut from: ConstReadBuffer<'a>,
     encoding: &PrimitiveEncoding,
     out: (usize, [MaybeUninit<u8>; N]),
-) -> (ConstReadBuffer<'a>, [MaybeUninit<u8>; N]) {
+) -> Option<(ConstReadBuffer<'a>, [MaybeUninit<u8>; N])> {
     let (start, mut out) = out;
     let mut offset = 0;
     while offset < encoding.size {
         // If the bytes are reversed, walk backwards from the end of the number when filling in bytes
         if encoding.reverse_bytes {
-            let (from_new, value) = from.get();
+            let (from_new, value) = match from.get() {
+                Some(data) => data,
+                None => return None,
+            };
             from = from_new;
             out[start + encoding.size - offset - 1] = MaybeUninit::new(value);
         } else {
-            let (from_new, value) = from.get();
+            let (from_new, value) = match from.get() {
+                Some(data) => data,
+                None => return None,
+            };
             from = from_new;
             out[start + offset] = MaybeUninit::new(value);
         }
         offset += 1;
     }
-    (from, out)
+    Some((from, out))
 }
 
 /// Deserialize a struct type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
@@ -224,18 +230,22 @@ const fn deserialize_const_struct<'a, const N: usize>(
     mut from: ConstReadBuffer<'a>,
     encoding: &StructEncoding,
     out: (usize, [MaybeUninit<u8>; N]),
-) -> (ConstReadBuffer<'a>, [MaybeUninit<u8>; N]) {
+) -> Option<(ConstReadBuffer<'a>, [MaybeUninit<u8>; N])> {
     let (start, mut out) = out;
     let mut i = 0;
     while i < encoding.data.len() {
         // Deserialize the field at the offset pointer in the struct
         let PlainOldData { offset, encoding } = encoding.data[i];
-        let (new_from, new_out) = deserialize_const_ptr(from, encoding, (start + offset, out));
+        let (new_from, new_out) = match deserialize_const_ptr(from, encoding, (start + offset, out))
+        {
+            Some(data) => data,
+            None => return None,
+        };
         from = new_from;
         out = new_out;
         i += 1;
     }
-    (from, out)
+    Some((from, out))
 }
 
 /// Deserialize a list type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
@@ -243,19 +253,25 @@ const fn deserialize_const_list<'a, const N: usize>(
     mut from: ConstReadBuffer<'a>,
     encoding: &ListEncoding,
     out: (usize, [MaybeUninit<u8>; N]),
-) -> (ConstReadBuffer<'a>, [MaybeUninit<u8>; N]) {
+) -> Option<(ConstReadBuffer<'a>, [MaybeUninit<u8>; N])> {
     let (start, mut out) = out;
     let len = encoding.len;
     let item_encoding = encoding.item_encoding;
     let mut i = 0;
     while i < len {
-        let (new_from, new_out) =
-            deserialize_const_ptr(from, item_encoding, (start + i * item_encoding.size(), out));
+        let (new_from, new_out) = match deserialize_const_ptr(
+            from,
+            item_encoding,
+            (start + i * item_encoding.size(), out),
+        ) {
+            Some(data) => data,
+            None => return None,
+        };
         from = new_from;
         out = new_out;
         i += 1;
     }
-    (from, out)
+    Some((from, out))
 }
 
 /// Deserialize a type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
@@ -263,7 +279,7 @@ const fn deserialize_const_ptr<'a, const N: usize>(
     from: ConstReadBuffer<'a>,
     encoding: &Encoding,
     out: (usize, [MaybeUninit<u8>; N]),
-) -> (ConstReadBuffer<'a>, [MaybeUninit<u8>; N]) {
+) -> Option<(ConstReadBuffer<'a>, [MaybeUninit<u8>; N])> {
     match encoding {
         Encoding::Struct(encoding) => deserialize_const_struct(from, encoding, out),
         Encoding::List(encoding) => deserialize_const_list(from, encoding, out),
@@ -273,22 +289,27 @@ const fn deserialize_const_ptr<'a, const N: usize>(
 
 #[macro_export]
 macro_rules! deserialize_const {
-    ($type:ty, $buffer:expr) => {{
-        const __SIZE: usize = std::mem::size_of::<$type>();
-        $crate::deserialize_const_raw::<__SIZE, $type>($buffer)
-    }};
+    ($type:ty, $buffer:expr) => {
+        unsafe {
+            const __SIZE: usize = std::mem::size_of::<$type>();
+            $crate::deserialize_const_raw::<__SIZE, $type>($buffer)
+        }
+    };
 }
 
-/// Deserialize a buffer into a type
+/// Deserialize a buffer into a type. This will return None if the buffer doesn't have enough data to fill the type.
 /// # Safety
 /// N must be `std::mem::size_of::<T>()`
 pub const unsafe fn deserialize_const_raw<const N: usize, T: SerializeConst>(
     from: ConstReadBuffer,
-) -> T {
+) -> Option<T> {
     // Create uninitized memory with the size of the type
     let out = [MaybeUninit::uninit(); N];
     // Fill in the bytes into the buffer for the type
-    let (_, out) = deserialize_const_ptr(from, &T::ENCODING, (0, out));
+    let (_, out) = match deserialize_const_ptr(from, &T::ENCODING, (0, out)) {
+        Some(data) => data,
+        None => return None,
+    };
     // Now that the memory is filled in, transmute it into the type
-    unsafe { std::mem::transmute_copy::<[MaybeUninit<u8>; N], T>(&out) }
+    Some(unsafe { std::mem::transmute_copy::<[MaybeUninit<u8>; N], T>(&out) })
 }

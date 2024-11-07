@@ -13,10 +13,13 @@ impl<'a> ConstReadBuffer<'a> {
         }
     }
 
-    pub const fn get(mut self) -> (Self, u8) {
+    pub const fn get(mut self) -> Option<(Self, u8)> {
+        if self.location >= self.memory.len() {
+            return None;
+        }
         let value = self.memory[self.location];
         self.location += 1;
-        (self, value)
+        Some((self, value))
     }
 
     pub const fn as_ref(&self) -> &[u8] {
