@@ -28,6 +28,12 @@ pub struct ConstWriteBuffer {
     memory: ConstVec<u8>,
 }
 
+impl Default for ConstWriteBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ConstWriteBuffer {
     pub const fn new() -> Self {
         Self {

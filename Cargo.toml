@@ -4,3 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+derive-const-serialize = { path = "derive-const-serialize" }
+
+[dev-dependencies]
+const-serialize = { path = "." }
+
+[workspace]
+members = [
+    "derive-const-serialize",
+]

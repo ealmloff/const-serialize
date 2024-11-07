@@ -3,13 +3,20 @@ use std::mem::MaybeUninit;
 mod const_serde;
 mod const_vec;
 
-use crate::const_serde::{ConstReadBuffer, ConstWriteBuffer};
+pub use const_serde::{ConstReadBuffer, ConstWriteBuffer};
+pub use derive_const_serialize::SerializeConst;
 
 /// Plain old data for a field. Stores the offset of the field in the struct and the encoding of the field.
 #[derive(Debug, Copy, Clone)]
 pub struct PlainOldData {
     offset: usize,
     encoding: &'static Encoding,
+}
+
+impl PlainOldData {
+    pub const fn new(offset: usize, encoding: &'static Encoding) -> Self {
+        Self { offset, encoding }
+    }
 }
 
 /// Encoding for a struct. The struct encoding is just a list of fields with offsets
@@ -19,6 +26,12 @@ pub struct StructEncoding {
     data: &'static [PlainOldData],
 }
 
+impl StructEncoding {
+    pub const fn new(size: usize, data: &'static [PlainOldData]) -> Self {
+        Self { size, data }
+    }
+}
+
 /// The encoding for a constant sized array. The array encoding is just a length and an item encoding.
 #[derive(Debug, Copy, Clone)]
 pub struct ListEncoding {
@@ -26,11 +39,26 @@ pub struct ListEncoding {
     item_encoding: &'static Encoding,
 }
 
+impl ListEncoding {
+    pub const fn new(len: usize, item_encoding: &'static Encoding) -> Self {
+        Self { len, item_encoding }
+    }
+}
+
 /// The encoding for a primitive type. The bytes will be reversed if the target is big endian.
 #[derive(Debug, Copy, Clone)]
 pub struct PrimitiveEncoding {
     size: usize,
     reverse_bytes: bool,
+}
+
+impl PrimitiveEncoding {
+    pub const fn new(size: usize, reverse_bytes: bool) -> Self {
+        Self {
+            size,
+            reverse_bytes,
+        }
+    }
 }
 
 /// The encoding for a type. This encoding defines a sequence of locations and reversed or not bytes. These bytes will be copied from during serialization and copied into during deserialization.
@@ -53,6 +81,9 @@ impl Encoding {
 }
 
 /// A trait for types that can be serialized and deserialized in const.
+///
+/// # Safety
+/// The encoding must accurately describe the memory layout of the type
 pub unsafe trait SerializeConst: Sized {
     /// The memory layout of the type. This type must have plain old data; no pointers or references.
     const ENCODING: Encoding;
@@ -149,9 +180,9 @@ const fn serialize_const_ptr(
     encoding: &Encoding,
 ) -> ConstWriteBuffer {
     match encoding {
-        Encoding::Struct(encoding) => serialize_const_struct(ptr, to, &encoding),
-        Encoding::List(encoding) => serialize_const_list(ptr, to, &encoding),
-        Encoding::Primitive(encoding) => serialize_const_primitive(ptr, to, &encoding),
+        Encoding::Struct(encoding) => serialize_const_struct(ptr, to, encoding),
+        Encoding::List(encoding) => serialize_const_list(ptr, to, encoding),
+        Encoding::Primitive(encoding) => serialize_const_primitive(ptr, to, encoding),
     }
 }
 
@@ -252,332 +283,4 @@ pub const unsafe fn deserialize_const<const N: usize, T: SerializeConst>(
     let (_, out) = deserialize_const_ptr(from, &T::ENCODING, (0, out));
     // Now that the memory is filled in, transmute it into the type
     unsafe { std::mem::transmute_copy::<[MaybeUninit<u8>; N], T>(&out) }
-}
-
-#[test]
-fn test_crimes() {
-    struct MyStruct {
-        a: u32,
-        b: u8,
-        c: u32,
-        d: u32,
-    }
-    const SIZE: usize = std::mem::size_of::<MyStruct>();
-    let mut out = [MaybeUninit::uninit(); SIZE];
-    let first_align = std::mem::offset_of!(MyStruct, a);
-    let second_align = std::mem::offset_of!(MyStruct, b);
-    let third_align = std::mem::offset_of!(MyStruct, c);
-    let fourth_align = std::mem::offset_of!(MyStruct, d);
-    for (i, byte) in 1234u32.to_le_bytes().iter().enumerate() {
-        out[i + first_align] = MaybeUninit::new(*byte);
-    }
-    for (i, byte) in 12u8.to_le_bytes().iter().enumerate() {
-        out[i + second_align] = MaybeUninit::new(*byte);
-    }
-    for (i, byte) in 13u32.to_le_bytes().iter().enumerate() {
-        out[i + third_align] = MaybeUninit::new(*byte);
-    }
-    for (i, byte) in 14u32.to_le_bytes().iter().enumerate() {
-        out[i + fourth_align] = MaybeUninit::new(*byte);
-    }
-    let out = unsafe { std::mem::transmute_copy::<[MaybeUninit<u8>; SIZE], MyStruct>(&out) };
-    assert_eq!(out.a, 1234);
-    assert_eq!(out.b, 12);
-    assert_eq!(out.c, 13);
-    assert_eq!(out.d, 14);
-}
-
-#[test]
-fn test_serialize_const_layout_primitive() {
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(&1234u32, buf);
-    assert_eq!(buf.as_ref(), 1234u32.to_le_bytes());
-    let buf = buf.read();
-    const SIZE_U32: usize = std::mem::size_of::<u32>();
-    unsafe { assert_eq!(deserialize_const::<SIZE_U32, u32>(buf), 1234u32) };
-
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(&1234u64, buf);
-    assert_eq!(buf.as_ref(), 1234u64.to_le_bytes());
-    let buf = buf.read();
-    const SIZE_U64: usize = std::mem::size_of::<u64>();
-    unsafe { assert_eq!(deserialize_const::<SIZE_U64, u64>(buf), 1234u64) };
-
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(&1234i32, buf);
-    assert_eq!(buf.as_ref(), 1234i32.to_le_bytes());
-    let buf = buf.read();
-    const SIZE_I32: usize = std::mem::size_of::<i32>();
-    unsafe { assert_eq!(deserialize_const::<SIZE_I32, i32>(buf), 1234i32) };
-
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(&1234i64, buf);
-    assert_eq!(buf.as_ref(), 1234i64.to_le_bytes());
-    let buf = buf.read();
-    const SIZE_I64: usize = std::mem::size_of::<i64>();
-    unsafe { assert_eq!(deserialize_const::<SIZE_I64, i64>(buf), 1234i64) };
-
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(&true, buf);
-    assert_eq!(buf.as_ref(), [1u8]);
-    let buf = buf.read();
-    const SIZE_BOOL: usize = std::mem::size_of::<bool>();
-    unsafe { assert_eq!(deserialize_const::<SIZE_BOOL, bool>(buf), true) };
-}
-
-#[test]
-fn test_serialize_const_layout_list() {
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(&[1u8, 2, 3] as &[u8; 3], buf);
-    println!("{:?}", buf.as_ref());
-    let buf = buf.read();
-    const SIZE_ARRAY: usize = std::mem::size_of::<[u8; 3]>();
-    unsafe { assert_eq!(deserialize_const::<SIZE_ARRAY, [u8; 3]>(buf), [1, 2, 3]) };
-}
-
-#[test]
-fn test_serialize_const_layout_nested_lists() {
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(
-        &[[1u8, 2, 3], [4u8, 5, 6], [7u8, 8, 9]] as &[[u8; 3]; 3],
-        buf,
-    );
-    println!("{:?}", buf.as_ref());
-    let buf = buf.read();
-    const SIZE_ARRAY: usize = std::mem::size_of::<[[u8; 3]; 3]>();
-    assert_eq!(
-        unsafe { deserialize_const::<SIZE_ARRAY, [[u8; 3]; 3]>(buf) },
-        [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
-    );
-}
-
-#[test]
-fn test_serialize_const_layout_struct() {
-    #[derive(Debug, PartialEq)]
-    struct Struct {
-        a: u32,
-        b: u8,
-        c: u32,
-        d: u32,
-    }
-
-    unsafe impl SerializeConst for Struct {
-        const ENCODING: Encoding = Encoding::Struct(StructEncoding {
-            size: std::mem::size_of::<Struct>(),
-            data: &[
-                PlainOldData {
-                    offset: std::mem::offset_of!(Struct, a),
-                    encoding: &u32::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(Struct, b),
-                    encoding: &u8::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(Struct, c),
-                    encoding: &u32::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(Struct, d),
-                    encoding: &u32::ENCODING,
-                },
-            ],
-        });
-    }
-
-    #[derive(Debug, PartialEq)]
-    struct OtherStruct {
-        a: u32,
-        b: u8,
-        c: Struct,
-        d: u32,
-    }
-
-    unsafe impl SerializeConst for OtherStruct {
-        const ENCODING: Encoding = Encoding::Struct(StructEncoding {
-            size: std::mem::size_of::<OtherStruct>(),
-            data: &[
-                PlainOldData {
-                    offset: std::mem::offset_of!(OtherStruct, a),
-                    encoding: &u32::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(OtherStruct, b),
-                    encoding: &u8::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(OtherStruct, c),
-                    encoding: &Struct::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(OtherStruct, d),
-                    encoding: &u32::ENCODING,
-                },
-            ],
-        });
-    }
-
-    println!("{:?}", OtherStruct::ENCODING);
-
-    let data = Struct {
-        a: 0x11111111,
-        b: 0x22,
-        c: 0x33333333,
-        d: 0x44444444,
-    };
-    let data = OtherStruct {
-        a: 0x11111111,
-        b: 0x22,
-        c: data,
-        d: 0x44444444,
-    };
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(&data, buf);
-    println!("{:?}", buf.as_ref());
-    let buf = buf.read();
-    const SIZE: usize = std::mem::size_of::<OtherStruct>();
-    let data2 = unsafe { deserialize_const::<SIZE, OtherStruct>(buf) };
-    assert_eq!(data, data2);
-}
-
-#[test]
-fn test_serialize_const_layout_struct_list() {
-    #[derive(Clone, Copy, Debug, PartialEq)]
-    struct Struct {
-        a: u32,
-        b: u8,
-        c: u32,
-        d: u32,
-    }
-
-    impl Struct {
-        const fn equal(&self, other: &Struct) -> bool {
-            self.a == other.a && self.b == other.b && self.c == other.c && self.d == other.d
-        }
-    }
-
-    unsafe impl SerializeConst for Struct {
-        const ENCODING: Encoding = Encoding::Struct(StructEncoding {
-            size: std::mem::size_of::<Struct>(),
-            data: &[
-                PlainOldData {
-                    offset: std::mem::offset_of!(Struct, a),
-                    encoding: &u32::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(Struct, b),
-                    encoding: &u8::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(Struct, c),
-                    encoding: &u32::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(Struct, d),
-                    encoding: &u32::ENCODING,
-                },
-            ],
-        });
-    }
-
-    #[derive(Clone, Copy, Debug, PartialEq)]
-    struct OtherStruct {
-        a: u32,
-        b: u8,
-        c: Struct,
-        d: u32,
-    }
-
-    impl OtherStruct {
-        const fn equal(&self, other: &OtherStruct) -> bool {
-            self.a == other.a && self.b == other.b && self.c.equal(&other.c) && self.d == other.d
-        }
-    }
-
-    unsafe impl SerializeConst for OtherStruct {
-        const ENCODING: Encoding = Encoding::Struct(StructEncoding {
-            size: std::mem::size_of::<OtherStruct>(),
-            data: &[
-                PlainOldData {
-                    offset: std::mem::offset_of!(OtherStruct, a),
-                    encoding: &u32::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(OtherStruct, b),
-                    encoding: &u8::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(OtherStruct, c),
-                    encoding: &Struct::ENCODING,
-                },
-                PlainOldData {
-                    offset: std::mem::offset_of!(OtherStruct, d),
-                    encoding: &u32::ENCODING,
-                },
-            ],
-        });
-    }
-
-    const INNER_DATA: Struct = Struct {
-        a: 0x11111111,
-        b: 0x22,
-        c: 0x33333333,
-        d: 0x44444444,
-    };
-    const DATA: [OtherStruct; 3] = [
-        OtherStruct {
-            a: 0x11111111,
-            b: 0x22,
-            c: INNER_DATA,
-            d: 0x44444444,
-        },
-        OtherStruct {
-            a: 0x111111,
-            b: 0x23,
-            c: INNER_DATA,
-            d: 0x44444444,
-        },
-        OtherStruct {
-            a: 0x11111111,
-            b: 0x11,
-            c: INNER_DATA,
-            d: 0x44441144,
-        },
-    ];
-
-    const SIZE: usize = std::mem::size_of::<[OtherStruct; 3]>();
-    const _ASSERT: () = {
-        let mut buf = ConstWriteBuffer::new();
-        buf = serialize_const(&DATA, buf);
-        let buf = buf.read();
-        let [first, second, third] = unsafe { deserialize_const::<SIZE, [OtherStruct; 3]>(buf) };
-        if !(first.equal(&DATA[0]) && second.equal(&DATA[1]) && third.equal(&DATA[2])) {
-            panic!("data mismatch");
-        }
-    };
-    const _ASSERT_2: () = {
-        let mut buf = ConstWriteBuffer::new();
-        const DATA_AGAIN: [[OtherStruct; 3]; 3] = [DATA, DATA, DATA];
-        const ARR_SIZE: usize = std::mem::size_of::<[[OtherStruct; 3]; 3]>();
-        buf = serialize_const(&DATA_AGAIN, buf);
-        let buf = buf.read();
-        let [first, second, third] =
-            unsafe { deserialize_const::<ARR_SIZE, [[OtherStruct; 3]; 3]>(buf) };
-        if !(first[0].equal(&DATA[0]) && first[1].equal(&DATA[1]) && first[2].equal(&DATA[2])) {
-            panic!("data mismatch");
-        }
-        if !(second[0].equal(&DATA[0]) && second[1].equal(&DATA[1]) && second[2].equal(&DATA[2])) {
-            panic!("data mismatch");
-        }
-        if !(third[0].equal(&DATA[0]) && third[1].equal(&DATA[1]) && third[2].equal(&DATA[2])) {
-            panic!("data mismatch");
-        }
-    };
-
-    let mut buf = ConstWriteBuffer::new();
-    buf = serialize_const(&DATA, buf);
-    println!("{:?}", buf.as_ref());
-    let buf = buf.read();
-    let data2 = unsafe { deserialize_const::<SIZE, [OtherStruct; 3]>(buf) };
-    assert_eq!(DATA, data2);
 }
