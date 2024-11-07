@@ -43,7 +43,7 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
                             &[#(
                                 const_serialize::PlainOldData::new(
                                     std::mem::offset_of!(#ty, #field_names),
-                                    &<#field_types as const_serialize::SerializeConst>::ENCODING,
+                                    <#field_types as const_serialize::SerializeConst>::ENCODING,
                                 ),
                             )*],
                         ));

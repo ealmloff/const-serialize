@@ -10,11 +10,11 @@ pub use derive_const_serialize::SerializeConst;
 #[derive(Debug, Copy, Clone)]
 pub struct PlainOldData {
     offset: usize,
-    encoding: &'static Encoding,
+    encoding: Encoding,
 }
 
 impl PlainOldData {
-    pub const fn new(offset: usize, encoding: &'static Encoding) -> Self {
+    pub const fn new(offset: usize, encoding: Encoding) -> Self {
         Self { offset, encoding }
     }
 }
@@ -29,6 +29,45 @@ pub struct StructEncoding {
 impl StructEncoding {
     pub const fn new(size: usize, data: &'static [PlainOldData]) -> Self {
         Self { size, data }
+    }
+}
+
+/// The encoding for an enum. The enum encoding is just a discriminate size and a tag encoding.
+#[derive(Debug, Copy, Clone)]
+pub struct EnumEncoding {
+    size: usize,
+    discriminant: PrimitiveEncoding,
+    variants_offset: usize,
+    variants: &'static [EnumVariant],
+}
+
+impl EnumEncoding {
+    pub const fn new(
+        size: usize,
+        discriminant_size: usize,
+        reverse_bytes: bool,
+        variants_offset: usize,
+        variants: &'static [EnumVariant],
+    ) -> Self {
+        Self {
+            size,
+            discriminant: PrimitiveEncoding::new(discriminant_size, reverse_bytes),
+            variants_offset,
+            variants,
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct EnumVariant {
+    // Note: tags may not be sequential
+    tag: u32,
+    data: StructEncoding,
+}
+
+impl EnumVariant {
+    pub const fn new(tag: u32, data: StructEncoding) -> Self {
+        Self { tag, data }
     }
 }
 
@@ -64,6 +103,7 @@ impl PrimitiveEncoding {
 /// The encoding for a type. This encoding defines a sequence of locations and reversed or not bytes. These bytes will be copied from during serialization and copied into during deserialization.
 #[derive(Debug, Copy, Clone)]
 pub enum Encoding {
+    Enum(EnumEncoding),
     Struct(StructEncoding),
     List(ListEncoding),
     Primitive(PrimitiveEncoding),
@@ -73,6 +113,7 @@ impl Encoding {
     /// The size of the type in bytes.
     const fn size(&self) -> usize {
         match self {
+            Encoding::Enum(encoding) => encoding.size,
             Encoding::Struct(encoding) => encoding.size,
             Encoding::List(encoding) => encoding.len * encoding.item_encoding.size(),
             Encoding::Primitive(encoding) => encoding.size,
@@ -129,9 +170,49 @@ const fn serialize_const_struct(
     let mut i = 0;
     while i < encoding.data.len() {
         // Serialize the field at the offset pointer in the struct
-        let PlainOldData { offset, encoding } = encoding.data[i];
-        let field = unsafe { ptr.byte_add(offset) };
+        let PlainOldData { offset, encoding } = &encoding.data[i];
+        let field = unsafe { ptr.byte_add(*offset) };
         to = serialize_const_ptr(field, to, encoding);
+        i += 1;
+    }
+    to
+}
+
+/// Serialize an enum that is stored at the pointer passed in
+const fn serialize_const_enum(
+    ptr: *const (),
+    mut to: ConstWriteBuffer,
+    encoding: &EnumEncoding,
+) -> ConstWriteBuffer {
+    let mut discriminant = 0;
+
+    let byte_ptr = ptr as *const u8;
+    let mut offset = 0;
+    while offset < encoding.discriminant.size {
+        // If the bytes are reversed, walk backwards from the end of the number when pushing bytes
+        let byte = if encoding.discriminant.reverse_bytes {
+            unsafe {
+                byte_ptr
+                    .byte_add(encoding.discriminant.size - offset - 1)
+                    .read()
+            }
+        } else {
+            unsafe { byte_ptr.byte_add(offset).read() }
+        };
+        to = to.push(byte);
+        discriminant |= (byte as u32) << (offset * 8);
+        offset += 1;
+    }
+
+    let mut i = 0;
+    while i < encoding.variants.len() {
+        // If the variant is the discriminated one, serialize it
+        let EnumVariant { tag, data } = &encoding.variants[i];
+        if discriminant == *tag {
+            let data_ptr = unsafe { ptr.byte_add(encoding.variants_offset) };
+            to = serialize_const_struct(data_ptr, to, data);
+            break;
+        }
         i += 1;
     }
     to
@@ -180,6 +261,7 @@ const fn serialize_const_ptr(
     encoding: &Encoding,
 ) -> ConstWriteBuffer {
     match encoding {
+        Encoding::Enum(encoding) => serialize_const_enum(ptr, to, encoding),
         Encoding::Struct(encoding) => serialize_const_struct(ptr, to, encoding),
         Encoding::List(encoding) => serialize_const_list(ptr, to, encoding),
         Encoding::Primitive(encoding) => serialize_const_primitive(ptr, to, encoding),
@@ -205,19 +287,14 @@ const fn deserialize_const_primitive<'a, const N: usize>(
     let mut offset = 0;
     while offset < encoding.size {
         // If the bytes are reversed, walk backwards from the end of the number when filling in bytes
+        let (from_new, value) = match from.get() {
+            Some(data) => data,
+            None => return None,
+        };
+        from = from_new;
         if encoding.reverse_bytes {
-            let (from_new, value) = match from.get() {
-                Some(data) => data,
-                None => return None,
-            };
-            from = from_new;
             out[start + encoding.size - offset - 1] = MaybeUninit::new(value);
         } else {
-            let (from_new, value) = match from.get() {
-                Some(data) => data,
-                None => return None,
-            };
-            from = from_new;
             out[start + offset] = MaybeUninit::new(value);
         }
         offset += 1;
@@ -235,16 +312,66 @@ const fn deserialize_const_struct<'a, const N: usize>(
     let mut i = 0;
     while i < encoding.data.len() {
         // Deserialize the field at the offset pointer in the struct
-        let PlainOldData { offset, encoding } = encoding.data[i];
-        let (new_from, new_out) = match deserialize_const_ptr(from, encoding, (start + offset, out))
-        {
-            Some(data) => data,
-            None => return None,
-        };
+        let PlainOldData { offset, encoding } = &encoding.data[i];
+        let (new_from, new_out) =
+            match deserialize_const_ptr(from, encoding, (start + *offset, out)) {
+                Some(data) => data,
+                None => return None,
+            };
         from = new_from;
         out = new_out;
         i += 1;
     }
+    Some((from, out))
+}
+
+/// Deserialize an enum type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
+const fn deserialize_const_enum<'a, const N: usize>(
+    mut from: ConstReadBuffer<'a>,
+    encoding: &EnumEncoding,
+    out: (usize, [MaybeUninit<u8>; N]),
+) -> Option<(ConstReadBuffer<'a>, [MaybeUninit<u8>; N])> {
+    let (start, mut out) = out;
+    let mut discriminant = 0;
+
+    // First, deserialize the discriminant
+    let mut offset = 0;
+    while offset < encoding.discriminant.size {
+        // If the bytes are reversed, walk backwards from the end of the number when filling in bytes
+        let (from_new, value) = match from.get() {
+            Some(data) => data,
+            None => return None,
+        };
+        from = from_new;
+        if encoding.discriminant.reverse_bytes {
+            out[start + encoding.size - offset - 1] = MaybeUninit::new(value);
+            discriminant |= (value as u32) << (encoding.discriminant.size - offset - 1) * 8;
+        } else {
+            out[start + offset] = MaybeUninit::new(value);
+            discriminant |= (value as u32) << (offset * 8);
+        }
+        offset += 1;
+    }
+
+    // Then, deserialize the variant
+    let mut i = 0;
+    while i < encoding.variants.len() {
+        // If the variant is the discriminated one, deserialize it
+        let EnumVariant { tag, data } = &encoding.variants[i];
+        if discriminant == *tag {
+            let offset = encoding.variants_offset;
+            let (new_from, new_out) =
+                match deserialize_const_struct(from, data, (start + offset, out)) {
+                    Some(data) => data,
+                    None => return None,
+                };
+            from = new_from;
+            out = new_out;
+            break;
+        }
+        i += 1;
+    }
+
     Some((from, out))
 }
 
@@ -281,6 +408,7 @@ const fn deserialize_const_ptr<'a, const N: usize>(
     out: (usize, [MaybeUninit<u8>; N]),
 ) -> Option<(ConstReadBuffer<'a>, [MaybeUninit<u8>; N])> {
     match encoding {
+        Encoding::Enum(encoding) => deserialize_const_enum(from, encoding, out),
         Encoding::Struct(encoding) => deserialize_const_struct(from, encoding, out),
         Encoding::List(encoding) => deserialize_const_list(from, encoding, out),
         Encoding::Primitive(encoding) => deserialize_const_primitive(from, encoding, out),
