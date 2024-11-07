@@ -134,17 +134,19 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
                 let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
                 let mut where_clause = where_clause.cloned();
                 add_bounds(&mut where_clause, &input.generics);
-                let mut max_discriminant = 0;
+                let mut last_discriminant = None;
                 let variants = data.variants.iter().map(|variant| {
                     let discriminant = variant
                         .discriminant
                         .as_ref()
                         .map(|(_, discriminant)| discriminant.to_token_stream())
-                        .unwrap_or_else(|| {
-                            let discriminant = max_discriminant;
-                            max_discriminant += 1;
-                            quote! { #discriminant }
+                        .unwrap_or_else(|| match &last_discriminant {
+                            Some(discriminant) => quote! { #discriminant + 1 },
+                            None => {
+                                quote! { 0 }
+                            }
                         });
+                    last_discriminant = Some(discriminant.clone());
                     let field_names = variant
                         .fields
                         .iter()

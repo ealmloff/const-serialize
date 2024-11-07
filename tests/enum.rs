@@ -109,6 +109,7 @@ fn test_serialize_nested_enum() {
     enum InnerEnum {
         A { one: u8 },
         B { one: u64, two: f64 } = 1000,
+        C { one: u32, two: u16 },
     }
 
     let data = Enum::A {
@@ -136,6 +137,19 @@ fn test_serialize_nested_enum() {
         two: InnerEnum::B {
             one: 0x2233,
             two: 0.123456789,
+        },
+    };
+    let mut buf = ConstWriteBuffer::new();
+    buf = serialize_const(&data, buf);
+    println!("{:?}", buf.as_ref());
+    let buf = buf.read();
+    assert_eq!(deserialize_const!(Enum, buf), Some(data));
+
+    let data = Enum::B {
+        one: 0x11,
+        two: InnerEnum::C {
+            one: 0x2233,
+            two: 56789,
         },
     };
     let mut buf = ConstWriteBuffer::new();
