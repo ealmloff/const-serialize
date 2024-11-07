@@ -388,7 +388,7 @@ const fn deserialize_const_enum<'a, const N: usize>(
         from = from_new;
         if encoding.discriminant.reverse_bytes {
             out[start + encoding.size - offset - 1] = MaybeUninit::new(value);
-            discriminant |= (value as u32) << (encoding.discriminant.size - offset - 1) * 8;
+            discriminant |= (value as u32) << ((encoding.discriminant.size - offset - 1) * 8);
         } else {
             out[start + offset] = MaybeUninit::new(value);
             discriminant |= (value as u32) << (offset * 8);
