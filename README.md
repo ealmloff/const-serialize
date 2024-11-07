@@ -1,4 +1,4 @@
-A rust serialization library that works in const with complex(ish) types like enums, nested structs and arrays.
+A rust serialization library that works in const with complex(ish) types like enums, nested structs and arrays. Const rust does not have an allocator, so this library cannot work in a cross architecture environment with Vecs, slices or strings.
 
 ```rust
 #[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
