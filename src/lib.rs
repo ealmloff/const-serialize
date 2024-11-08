@@ -99,15 +99,11 @@ impl ListEncoding {
 #[derive(Debug, Copy, Clone)]
 pub struct PrimitiveEncoding {
     size: usize,
-    reverse_bytes: bool,
 }
 
 impl PrimitiveEncoding {
-    pub const fn new(size: usize, reverse_bytes: bool) -> Self {
-        Self {
-            size,
-            reverse_bytes,
-        }
+    pub const fn new(size: usize) -> Self {
+        Self { size }
     }
 }
 
@@ -147,7 +143,6 @@ macro_rules! impl_serialize_const {
         unsafe impl SerializeConst for $type {
             const MEMORY_LAYOUT: Layout = Layout::Primitive(PrimitiveEncoding {
                 size: std::mem::size_of::<$type>(),
-                reverse_bytes: cfg!(target_endian = "big"),
             });
         }
     };
@@ -232,7 +227,7 @@ const fn serialize_const_enum(
     let mut offset = 0;
     while offset < encoding.discriminant.size {
         // If the bytes are reversed, walk backwards from the end of the number when pushing bytes
-        let byte = if encoding.discriminant.reverse_bytes {
+        let byte = if cfg!(target_endian = "big") {
             unsafe {
                 byte_ptr
                     .byte_add(encoding.discriminant.size - offset - 1)
@@ -270,7 +265,7 @@ const fn serialize_const_primitive(
     let mut offset = 0;
     while offset < encoding.size {
         // If the bytes are reversed, walk backwards from the end of the number when pushing bytes
-        if encoding.reverse_bytes {
+        if cfg!(target_endian = "big") {
             to = to.push(unsafe { ptr.byte_add(encoding.size - offset - 1).read() });
         } else {
             to = to.push(unsafe { ptr.byte_add(offset).read() });
@@ -335,7 +330,7 @@ const fn deserialize_const_primitive<'a, const N: usize>(
             None => return None,
         };
         from = from_new;
-        if encoding.reverse_bytes {
+        if cfg!(target_endian = "big") {
             out[start + encoding.size - offset - 1] = MaybeUninit::new(value);
         } else {
             out[start + offset] = MaybeUninit::new(value);
@@ -386,7 +381,7 @@ const fn deserialize_const_enum<'a, const N: usize>(
             None => return None,
         };
         from = from_new;
-        if encoding.discriminant.reverse_bytes {
+        if cfg!(target_endian = "big") {
             out[start + encoding.size - offset - 1] = MaybeUninit::new(value);
             discriminant |= (value as u32) << ((encoding.discriminant.size - offset - 1) * 8);
         } else {

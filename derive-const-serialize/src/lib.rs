@@ -179,7 +179,6 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
                             std::mem::size_of::<Self>(),
                             const_serialize::PrimitiveEncoding::new(
                                 #discriminant_size as usize,
-                                cfg!(target_endian = "big"),
                             ),
                             {
                                 const DATA: &'static [const_serialize::EnumVariant] = &[
