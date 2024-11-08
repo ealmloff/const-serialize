@@ -151,7 +151,7 @@ fn test_serialize_const_layout_struct() {
         d: u32,
     }
 
-    println!("{:?}", OtherStruct::ENCODING);
+    println!("{:?}", OtherStruct::MEMORY_LAYOUT);
 
     let data = Struct {
         a: 0x11111111,

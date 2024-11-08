@@ -38,12 +38,12 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
                 let field_types = fields.named.iter().map(|field| &field.ty);
                 quote! {
                     unsafe impl #impl_generics const_serialize::SerializeConst for #ty #ty_generics #where_clause {
-                        const ENCODING: const_serialize::Encoding = const_serialize::Encoding::Struct(const_serialize::StructEncoding::new(
+                        const MEMORY_LAYOUT: const_serialize::Layout = const_serialize::Layout::Struct(const_serialize::StructEncoding::new(
                             std::mem::size_of::<Self>(),
                             &[#(
                                 const_serialize::PlainOldData::new(
                                     std::mem::offset_of!(#ty, #field_names),
-                                    <#field_types as const_serialize::SerializeConst>::ENCODING,
+                                    <#field_types as const_serialize::SerializeConst>::MEMORY_LAYOUT,
                                 ),
                             )*],
                         ));
@@ -57,7 +57,7 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
                 add_bounds(&mut where_clause, &input.generics);
                 quote! {
                     unsafe impl #impl_generics const_serialize::SerializeConst for #ty #ty_generics #where_clause {
-                        const ENCODING: const_serialize::Encoding = const_serialize::Encoding::Struct(const_serialize::StructEncoding::new(
+                        const MEMORY_LAYOUT: const_serialize::Layout = const_serialize::Layout::Struct(const_serialize::StructEncoding::new(
                             std::mem::size_of::<Self>(),
                             &[],
                         ));
@@ -164,9 +164,9 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
                             }
                             const_serialize::EnumVariant::new(
                                 #discriminant as u32,
-                                match VariantStruct::ENCODING {
-                                    const_serialize::Encoding::Struct(encoding) => encoding,
-                                    _ => panic!("VariantStruct::ENCODING must be a struct"),
+                                match VariantStruct::MEMORY_LAYOUT {
+                                    const_serialize::Layout::Struct(encoding) => encoding,
+                                    _ => panic!("VariantStruct::MEMORY_LAYOUT must be a struct"),
                                 },
                                 std::mem::align_of::<VariantStruct>(),
                             )
@@ -175,7 +175,7 @@ pub fn derive_parse(input: TokenStream) -> TokenStream {
                 });
                 quote! {
                     unsafe impl #impl_generics const_serialize::SerializeConst for #ty #ty_generics #where_clause {
-                        const ENCODING: const_serialize::Encoding = const_serialize::Encoding::Enum(const_serialize::EnumEncoding::new(
+                        const MEMORY_LAYOUT: const_serialize::Layout = const_serialize::Layout::Enum(const_serialize::EnumEncoding::new(
                             std::mem::size_of::<Self>(),
                             const_serialize::PrimitiveEncoding::new(
                                 #discriminant_size as usize,

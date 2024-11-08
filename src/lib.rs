@@ -10,16 +10,16 @@ pub use derive_const_serialize::SerializeConst;
 #[derive(Debug, Copy, Clone)]
 pub struct PlainOldData {
     offset: usize,
-    encoding: Encoding,
+    encoding: Layout,
 }
 
 impl PlainOldData {
-    pub const fn new(offset: usize, encoding: Encoding) -> Self {
+    pub const fn new(offset: usize, encoding: Layout) -> Self {
         Self { offset, encoding }
     }
 }
 
-/// Encoding for a struct. The struct encoding is just a list of fields with offsets
+/// Layout for a struct. The struct encoding is just a list of fields with offsets
 #[derive(Debug, Copy, Clone)]
 pub struct StructEncoding {
     size: usize,
@@ -86,11 +86,11 @@ impl EnumVariant {
 #[derive(Debug, Copy, Clone)]
 pub struct ListEncoding {
     len: usize,
-    item_encoding: &'static Encoding,
+    item_encoding: &'static Layout,
 }
 
 impl ListEncoding {
-    pub const fn new(len: usize, item_encoding: &'static Encoding) -> Self {
+    pub const fn new(len: usize, item_encoding: &'static Layout) -> Self {
         Self { len, item_encoding }
     }
 }
@@ -113,21 +113,21 @@ impl PrimitiveEncoding {
 
 /// The encoding for a type. This encoding defines a sequence of locations and reversed or not bytes. These bytes will be copied from during serialization and copied into during deserialization.
 #[derive(Debug, Copy, Clone)]
-pub enum Encoding {
+pub enum Layout {
     Enum(EnumEncoding),
     Struct(StructEncoding),
     List(ListEncoding),
     Primitive(PrimitiveEncoding),
 }
 
-impl Encoding {
+impl Layout {
     /// The size of the type in bytes.
     const fn size(&self) -> usize {
         match self {
-            Encoding::Enum(encoding) => encoding.size,
-            Encoding::Struct(encoding) => encoding.size,
-            Encoding::List(encoding) => encoding.len * encoding.item_encoding.size(),
-            Encoding::Primitive(encoding) => encoding.size,
+            Layout::Enum(encoding) => encoding.size,
+            Layout::Struct(encoding) => encoding.size,
+            Layout::List(encoding) => encoding.len * encoding.item_encoding.size(),
+            Layout::Primitive(encoding) => encoding.size,
         }
     }
 }
@@ -138,14 +138,14 @@ impl Encoding {
 /// The encoding must accurately describe the memory layout of the type
 pub unsafe trait SerializeConst: Sized {
     /// The memory layout of the type. This type must have plain old data; no pointers or references.
-    const ENCODING: Encoding;
-    const _ASSERT: () = assert!(Self::ENCODING.size() == std::mem::size_of::<Self>());
+    const MEMORY_LAYOUT: Layout;
+    const _ASSERT: () = assert!(Self::MEMORY_LAYOUT.size() == std::mem::size_of::<Self>());
 }
 
 macro_rules! impl_serialize_const {
     ($type:ty) => {
         unsafe impl SerializeConst for $type {
-            const ENCODING: Encoding = Encoding::Primitive(PrimitiveEncoding {
+            const MEMORY_LAYOUT: Layout = Layout::Primitive(PrimitiveEncoding {
                 size: std::mem::size_of::<$type>(),
                 reverse_bytes: cfg!(target_endian = "big"),
             });
@@ -166,9 +166,9 @@ impl_serialize_const!(f32);
 impl_serialize_const!(f64);
 
 unsafe impl<const N: usize, T: SerializeConst> SerializeConst for [T; N] {
-    const ENCODING: Encoding = Encoding::List(ListEncoding {
+    const MEMORY_LAYOUT: Layout = Layout::List(ListEncoding {
         len: N,
-        item_encoding: &T::ENCODING,
+        item_encoding: &T::MEMORY_LAYOUT,
     });
 }
 
@@ -178,12 +178,12 @@ macro_rules! impl_serialize_const_tuple {
     };
     (@impl $inner:ty = $($generic:ident: $generic_number:expr),*) => {
         unsafe impl<$($generic: SerializeConst),*> SerializeConst for ($($generic,)*) {
-            const ENCODING: Encoding = {
-                Encoding::Struct(StructEncoding {
+            const MEMORY_LAYOUT: Layout = {
+                Layout::Struct(StructEncoding {
                     size: std::mem::size_of::<($($generic,)*)>(),
                     data: &[
                         $(
-                            PlainOldData::new(std::mem::offset_of!($inner, $generic_number), $generic::ENCODING),
+                            PlainOldData::new(std::mem::offset_of!($inner, $generic_number), $generic::MEMORY_LAYOUT),
                         )*
                     ],
                 })
@@ -300,13 +300,13 @@ const fn serialize_const_list(
 const fn serialize_const_ptr(
     ptr: *const (),
     to: ConstWriteBuffer,
-    encoding: &Encoding,
+    encoding: &Layout,
 ) -> ConstWriteBuffer {
     match encoding {
-        Encoding::Enum(encoding) => serialize_const_enum(ptr, to, encoding),
-        Encoding::Struct(encoding) => serialize_const_struct(ptr, to, encoding),
-        Encoding::List(encoding) => serialize_const_list(ptr, to, encoding),
-        Encoding::Primitive(encoding) => serialize_const_primitive(ptr, to, encoding),
+        Layout::Enum(encoding) => serialize_const_enum(ptr, to, encoding),
+        Layout::Struct(encoding) => serialize_const_struct(ptr, to, encoding),
+        Layout::List(encoding) => serialize_const_list(ptr, to, encoding),
+        Layout::Primitive(encoding) => serialize_const_primitive(ptr, to, encoding),
     }
 }
 
@@ -317,7 +317,7 @@ pub const fn serialize_const<T: SerializeConst>(
     to: ConstWriteBuffer,
 ) -> ConstWriteBuffer {
     let ptr = data as *const T as *const ();
-    serialize_const_ptr(ptr, to, &T::ENCODING)
+    serialize_const_ptr(ptr, to, &T::MEMORY_LAYOUT)
 }
 
 /// Deserialize a primitive type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
@@ -452,14 +452,14 @@ const fn deserialize_const_list<'a, const N: usize>(
 /// Deserialize a type into the out buffer at the offset passed in. Returns a new version of the buffer with the data added.
 const fn deserialize_const_ptr<'a, const N: usize>(
     from: ConstReadBuffer<'a>,
-    encoding: &Encoding,
+    encoding: &Layout,
     out: (usize, [MaybeUninit<u8>; N]),
 ) -> Option<(ConstReadBuffer<'a>, [MaybeUninit<u8>; N])> {
     match encoding {
-        Encoding::Enum(encoding) => deserialize_const_enum(from, encoding, out),
-        Encoding::Struct(encoding) => deserialize_const_struct(from, encoding, out),
-        Encoding::List(encoding) => deserialize_const_list(from, encoding, out),
-        Encoding::Primitive(encoding) => deserialize_const_primitive(from, encoding, out),
+        Layout::Enum(encoding) => deserialize_const_enum(from, encoding, out),
+        Layout::Struct(encoding) => deserialize_const_struct(from, encoding, out),
+        Layout::List(encoding) => deserialize_const_list(from, encoding, out),
+        Layout::Primitive(encoding) => deserialize_const_primitive(from, encoding, out),
     }
 }
 
@@ -483,7 +483,7 @@ pub const unsafe fn deserialize_const_raw<const N: usize, T: SerializeConst>(
     // Create uninitized memory with the size of the type
     let out = [MaybeUninit::uninit(); N];
     // Fill in the bytes into the buffer for the type
-    let (_, out) = match deserialize_const_ptr(from, &T::ENCODING, (0, out)) {
+    let (_, out) = match deserialize_const_ptr(from, &T::MEMORY_LAYOUT, (0, out)) {
         Some(data) => data,
         None => return None,
     };

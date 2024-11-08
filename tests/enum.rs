@@ -72,7 +72,7 @@ fn test_serialize_enum() {
         B { one: u8, two: u16 } = 15,
     }
 
-    println!("{:#?}", Enum::ENCODING);
+    println!("{:#?}", Enum::MEMORY_LAYOUT);
 
     let data = Enum::A {
         one: 0x11111111,
