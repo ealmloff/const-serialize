@@ -485,3 +485,24 @@ pub const unsafe fn deserialize_const_raw<const N: usize, T: SerializeConst>(
     // Now that the memory is filled in, transmute it into the type
     Some(unsafe { std::mem::transmute_copy::<[MaybeUninit<u8>; N], T>(&out) })
 }
+
+/// Check if the serialized representation of two items are the same
+pub const fn serialize_eq<T: SerializeConst>(first: &T, second: &T) -> bool {
+    let first_serialized = ConstWriteBuffer::new();
+    let first_serialized = serialize_const(first, first_serialized);
+    let second_serialized = ConstWriteBuffer::new();
+    let second_serialized = serialize_const(second, second_serialized);
+    let first_buf = first_serialized.as_ref();
+    let second_buf = second_serialized.as_ref();
+    if first_buf.len() != second_buf.len() {
+        return false;
+    }
+    let mut i = 0;
+    while i < first_buf.len() {
+        if first_buf[i] != second_buf[i] {
+            return false;
+        }
+        i += 1;
+    }
+    true
+}

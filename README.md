@@ -29,40 +29,12 @@ const {
     let mut buf = ConstWriteBuffer::new();
     buf = serialize_const(&data, buf);
     let buf = buf.read();
-    let [first, second, third] = match deserialize_const!([Struct; 3], buf) {
+    let deserialized = match deserialize_const!([Struct; 3], buf) {
         Some(data) => data,
         None => panic!("data mismatch"),
     };
-    if !(first.equal(&data[0]) && second.equal(&data[1]) && third.equal(&data[2])) {
+    if !serialize_eq(&data, &deserialized) {
         panic!("data mismatch");
-    }
-}
-
-impl Struct {
-    const fn equal(&self, other: &Struct) -> bool {
-        self.a == other.a && self.b == other.b && self.c == other.c && self.d.equal(&other.d)
-    }
-}
-
-impl Enum {
-    const fn equal(&self, other: &Enum) -> bool {
-        match (self, other) {
-            (
-                Enum::A { one, two },
-                Enum::A {
-                    one: other_one,
-                    two: other_two,
-                },
-            ) => *one == *other_one && *two == *other_two,
-            (
-                Enum::B { one, two },
-                Enum::B {
-                    one: other_one,
-                    two: other_two,
-                },
-            ) => *one == *other_one && *two == *other_two,
-            _ => false,
-        }
     }
 }
 ```
