@@ -9,6 +9,9 @@ derive-const-serialize = { path = "derive-const-serialize" }
 [dev-dependencies]
 const-serialize = { path = "." }
 
+[features]
+test-big-endian = []
+
 [workspace]
 members = [
     "derive-const-serialize",

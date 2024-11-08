@@ -265,7 +265,7 @@ const fn serialize_const_primitive(
     let mut offset = 0;
     while offset < encoding.size {
         // If the bytes are reversed, walk backwards from the end of the number when pushing bytes
-        if cfg!(target_endian = "big") {
+        if cfg!(any(target_endian = "big", feature = "test-big-endian")) {
             to = to.push(unsafe { ptr.byte_add(encoding.size - offset - 1).read() });
         } else {
             to = to.push(unsafe { ptr.byte_add(offset).read() });
@@ -330,7 +330,7 @@ const fn deserialize_const_primitive<'a, const N: usize>(
             None => return None,
         };
         from = from_new;
-        if cfg!(target_endian = "big") {
+        if cfg!(any(target_endian = "big", feature = "test-big-endian")) {
             out[start + encoding.size - offset - 1] = MaybeUninit::new(value);
         } else {
             out[start + offset] = MaybeUninit::new(value);
