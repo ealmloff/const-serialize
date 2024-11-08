@@ -398,6 +398,7 @@ const fn deserialize_const_enum<'a, const N: usize>(
 
     // Then, deserialize the variant
     let mut i = 0;
+    let mut matched_variant = false;
     while i < encoding.variants.len() {
         // If the variant is the discriminated one, deserialize it
         let EnumVariant { tag, data, .. } = &encoding.variants[i];
@@ -410,9 +411,13 @@ const fn deserialize_const_enum<'a, const N: usize>(
                 };
             from = new_from;
             out = new_out;
+            matched_variant = true;
             break;
         }
         i += 1;
+    }
+    if !matched_variant {
+        return None;
     }
 
     Some((from, out))

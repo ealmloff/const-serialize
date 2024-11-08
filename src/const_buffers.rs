@@ -44,6 +44,10 @@ impl ConstWriteBuffer {
         }
     }
 
+    pub const fn from(vec: ConstVec<u8>) -> Self {
+        Self { memory: vec }
+    }
+
     pub const fn push(self, value: u8) -> Self {
         let memory = self.memory.push(value);
         Self { memory }
@@ -51,6 +55,11 @@ impl ConstWriteBuffer {
 
     pub const fn as_ref(&self) -> &[u8] {
         self.memory.as_ref()
+    }
+
+    /// Get the underlying const vec for this buffer
+    pub const fn inner(self) -> ConstVec<u8> {
+        self.memory
     }
 
     pub const fn read(&self) -> ConstReadBuffer {

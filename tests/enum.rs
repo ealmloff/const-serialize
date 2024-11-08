@@ -96,6 +96,28 @@ fn test_serialize_enum() {
 }
 
 #[test]
+fn test_serialize_corrupted_enum() {
+    #[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
+    #[repr(C, u8)]
+    enum Enum {
+        A { one: u32, two: u16 },
+    }
+
+    let data = Enum::A {
+        one: 0x11111111,
+        two: 0x22,
+    };
+    let mut buf = ConstWriteBuffer::new();
+    buf = serialize_const(&data, buf);
+    let mut bad_buf = buf.inner();
+    bad_buf = bad_buf.set(0, 2);
+    let buf = ConstWriteBuffer::from(bad_buf);
+    println!("{:?}", buf.as_ref());
+    let buf = buf.read();
+    assert_eq!(deserialize_const!(Enum, buf), None);
+}
+
+#[test]
 fn test_serialize_nested_enum() {
     #[derive(Clone, Copy, Debug, PartialEq, SerializeConst)]
     #[repr(C, u8)]

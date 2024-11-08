@@ -8,6 +8,12 @@ pub struct ConstVec<T> {
     len: usize,
 }
 
+impl<T> Default for ConstVec<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T: Debug> Debug for ConstVec<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("ConstVec")
@@ -87,6 +93,14 @@ impl<T> ConstVec<T> {
         }
         self.len -= 1;
         (self, value)
+    }
+
+    pub const fn set(mut self, index: usize, value: T) -> Self {
+        if index >= self.len {
+            panic!("Out of bounds")
+        }
+        self.memory[index] = MaybeUninit::new(value);
+        self
     }
 }
 
